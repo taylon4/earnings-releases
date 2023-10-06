@@ -4,6 +4,8 @@
 # Files to not ignore
 !/.gitignore
 !/README.md
+!/setup.py
 
 # Folder to not ignore
 !/src
+
