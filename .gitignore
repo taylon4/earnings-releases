@@ -6,4 +6,4 @@
 !/README.md
 
 # Folder to not ignore
-!/puppet/
+!/src
