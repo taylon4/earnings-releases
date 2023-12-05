@@ -1,4 +1,4 @@
-{
+tickers = r'''{
     "AAPL": {
         "cik": 320193,
         "title": "Apple Inc."
@@ -35731,4 +35731,4 @@
         "cik": 1509589,
         "title": "CIVITAS RESOURCES, INC."
     }
-}
+}'''

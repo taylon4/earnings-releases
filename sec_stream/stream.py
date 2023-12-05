@@ -1,18 +1,19 @@
-import requests, json, lxml, time
+import requests, json, time, lxml, importlib.resources
 from threading import Thread
 from bs4 import BeautifulSoup
-
+from sec_stream import tickers  # load tickers (string)
 
 # class to stream company filings from the SEC
 class FilingStream(Thread):
     # headers - dict .. companies - dict {'ticker':[forms wanted]} .. delay - float
-    def __init__(self, headers={}, companies={}, delay=2, *args, **kwargs):
+    def __init__(self, headers={}, companies={}, delay=2, track_all = False, *args, **kwargs):
 
         super().__init__(*args, **kwargs)
 
         # make sure companies and formtypes are all uppercase
         self.companies = {key.upper(): [x.upper() for x in value] for key, value in companies.items()}
         self.ciks = self.__match_ciks(self.companies)  # create dict matching cik to ticker
+        self.track_all = track_all # track all companies
 
         self.thread_delay = delay
         self.thread_stop = False
@@ -30,13 +31,13 @@ class FilingStream(Thread):
     # create dict of ciks as keys and tickers as values
     def __match_ciks(self, companies: dict) -> dict:
         cikDict = {}
-        with open('tickers.json', 'r') as file:
-            data = json.loads(file.read())
-            for ticker in companies:
-                if ticker in data:  # key: cik, val: ticker
-                    cikDict[str(data[ticker]['cik'])] = ticker
-                else:
-                    raise Exception(f"Ticker {ticker} unknown")
+
+        data = json.loads(tickers.tickers)
+        for ticker in companies:
+            if ticker in data:  # key: cik, val: ticker
+                cikDict[str(data[ticker]['cik'])] = ticker
+            else:
+                raise Exception(f"Ticker {ticker} unknown")
         return cikDict
 
     # grab filings from SEC, if there are new, add them to latestFilings
@@ -45,29 +46,30 @@ class FilingStream(Thread):
         soup = BeautifulSoup(content, features='xml')
         filings = soup.find_all('entry')
         if self.latestFiling is None:  # initial entry
-            self.latestFiling = filings[6]
+            self.latestFiling = filings[0]
+            print("setting first initial filing")
         if self.latestFiling == filings[0]:
             return {}  # no new filings return empty
 
         currentFilings = {}
         for filing in filings:
             if filing == self.latestFiling:  # no more new entries
-                print('no new entries')
                 break
             cik = str(int(filing.find('id').text.split('-')[1][7:]))
 
             try:
-                if cik in self.ciks:  # check if filing is one we track
-                    ticker = self.ciks[cik]
+                if cik in self.ciks or self.track_all:  # check if filing is one we track
+                    ticker = self.ciks[cik] if not self.track_all else "forms"
                     title = filing.find('title').text
                     form = title.split('-')[0].strip()
-                    acceptedForms = self.companies[ticker]
-                    if len(acceptedForms) == 0 or form in acceptedForms:  # check if form is accepted
+                    acceptedForms = self.companies[ticker] if not self.track_all else []
+                    if len(acceptedForms) == 0 or form in acceptedForms or self.track_all:  # check if form is accepted
                         link = filing.find('link')['href']
                         date = filing.find('updated').text
                         if ticker not in currentFilings:
                             currentFilings[ticker] = []
                         currentFilings[ticker].append({'link': link, 'date': date, 'form': form})
+
             except Exception as e:
                 print(e)
 
@@ -106,7 +108,13 @@ class FilingStream(Thread):
         print(self.__check_filings())
 
 
+# Example code tracking all files.
 if __name__ == '__main__':
     companies = {'aapl': ["10-q"], 'MSFT': [], 'ACAD': []}
-    stream = FilingStream(companies=companies)
-    stream.thread_running = True
+    stream = FilingStream(companies=companies, track_all=True)
+    stream.start()
+    while True:
+        filings = stream.get_filings()
+        if(len(filings) > 0):
+            print(filings)
+        time.sleep(5)
